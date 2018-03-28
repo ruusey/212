@@ -1,226 +1,140 @@
-# HW2 Driver
-# 2018 Daniel Pade
-# All of your functions should be placed between the comments below
+#Author: Robert Usey
+#CSCE212, Dan Pade
+#HW2
+.data
+	.eqv    nodeData       		0
+    .eqv    nodeNextAddr        4
+    .eqv    nodeSize       		8       
+
 
 .text
   j main
 
-  #------------------ PUT YOUR CODE HERE ---------------------------
-
-  ## Prepends a number to a list
-  #
-  # @param $a0 The list.
-  # @param $a1 The element to prepend
-  #
-  # @return the new list [$a0] + $a1
-  #
-  ######################################
-  prepend:  
-    # BUG: should be -4
-    ###addi $sp,$sp,4
-    addi    $sp,$sp,-4
-    # BUGFIX
-    sw      $ra,0($sp)
-
-    lw      $t9,0($a0)              # load head of the list for later use
-    lw      $t0,0($a0)              # load head of list into $t0
-
-    # BUG: anding a _pointer_ against 0xF0 makes _no_ sense
-    # NOTE: better to use hex for bit patterns
-    ###andi $t0,$t0,240             # bitwise and with 240 (1111 0000) to extract first 4 bits for pointer to string
-    # BUGFIX
-
-    # BUG: this block of code is on the right track, but, wrong
-    # storing into a0 (the struct) for strcmp makes _no_ sense
-    sw      $t0,0($a0)              # store $t0 into $a0 for strcmp call
-    lb      $t6,0($t0)              # get the byte of the first string char in the list
-    lw      $t7,0($a1)              # get address of string
-    lb      $t1,0($t7)              # get the byte of the first char of the string
-
-    # NOTE: while we can set these here, we're burning two regs across the
-    # strcmp call -- cleaner to move this below the call
-    addi    $t3,$zero,1             # $t3 gets 1
-    addi    $t4,$zero,-1            # $t3 gets -1
-
-# be careful in this function may have a bug with front of the list
-alphloop:
-    #   slt     $t2, $t1, $t0           #if $t1 < $t0, then $t2 = 1, else $t2 = 0
-    #   beq     $t2, $t3, put           #if
-    #   beq     $t2, $zero, nextchar
-
-    # BUG: strcmp destroys the values of a0 and a1, so the second time through
-    # here they have bogus values
-    # BUGBAD: strcmp uses them as pointers to the _strings_ but here, we're using
-    # a0 as a _struct_ pointer!!!
-    jal     strcmp                  # compare the strings in $a0 and $a1
-    move    $t5,$v0                 # move the value returned from strcmp into $t5
-    beq     $t5,$t4,put             # if $t5 == -1, then value is less and then put new string at head of list
-    beq     $t5,$t3,nextstring      # if $t5 == 1, then the head of the list is larger than the string and go to next string
-    beq     $t5,$zero,close         # check if it is zero, if so it is already in the list so step out
-
-nextstring:
-    lw      $t2,0($a0)              # store pointer to next node in $t2
-
-    # NOTE: use hex for bit masks (e.g. 0x0F)
-    # BUG: this makes no sense
-    andi    $t8,$t9,15              # get address of next node string
-
-    beq     $t8,$zero,put           # if it points to null then add node at the end
-    sw      $t8,0($a0)              # store into $a0
-    j       alphloop                # check against the next string in loop
-
-put:
-    # NOTE: what is 8??? obviously, it's the size in bytes of a node, so the
-    # comment should say that
+.globl prepend
+prepend:
+    addi    $sp, $sp, -4
+    sw      $ra, 0($sp)
+    jal 	savestate
+    move 	$a2, $a1
+    jal     Node_num
+    sw      $a1, 4($v0)
+	
+    j 		returnstate
     
-    #MOVE NODE NUMBER IN a1 into a0 for Node_num CONSTRUCTOR CALL                   # $t5 gets 8
-    move    $a0,$a1                 # $t5 moved into $a0
-    jal     Node_num                  # allocate size for node
-    move    $t5,$v0                 # move address returned by malloc to $t5
+    ##
+    ##for some reason the adress from the start of the original list gets passed to print list after this
+    ## verified that it does point all next nodes to the previous but after calling, the adress of the end node is passed forcing a print of only the last element
+    ## not sure if my error or driver error or if this isnt the corrent way to recerse things...
+    ## got this to work in private testing by explicitly passing the correct adress for the new start of the reversed list
+    
+ .globl reverse   
+reverse:
+    addi    $sp, $sp, -4
+    sw      $ra, 0($sp)
+    jal 	savestate
+    beq     $a0, $zero, reverse_exit
+    #load adress of next nodes
+    lw 		$t0, nodeNextAddr($a0)
+    lw 		$t1, nodeNextAddr($t0)
+    sw 		$zero, nodeNextAddr($a0)
+    j 		reverse_loop
+reverse_increment:
+	#save adress of current node
+	move 	$t0, $t1
+	lw 		$t1, nodeNextAddr($t0) 
+reverse_loop:
+   #if we reach the end of the list
+   beqz 	$t1, reverse_exit
+   #save adress of current node in following nodes next field
+   sw 		$a0, 4($t0)
+   #make the current node the next node
+   move 	$a0, $t0	
+   bnez    	$t0, reverse_increment
+reverse_exit:
+	#end is now the start
+    move 	$v0, $t0
+    j 		returnstate 
+          
+.globl insert   
+insert:
+    addi    $sp, $sp,-4
+    sw      $ra 0($sp)
+    jal 	savestate
+	li 		$t0, 0
+    beq 	$a0, $zero,insert_exit
+    move 	$a3, $a0
+    j 		insert_loop
+insert_increment:
+	addi 	$t0, $t0,1
+	la 		$a0,($t1)
+insert_loop:
+    lw      $t1, nodeNextAddr($a0)
+    beq 	$t0, $a2, insert_index_found
+    bnez    $t1,insert_increment
+insert_index_found:
+	#DATA FROM NEW NODE
+	lw		$t0,nodeData($a1)
+	#ADR TO NEXT NODE
+	lw 		$t1,nodeNextAddr($a0)
+	# REPLACE THE DATA	
+	sw 		$t0, nodeData($a0)
+	sw 		$t1, nodeNextAddr($a0)
+insert_exit:
+    move 	$v0, $a3
+    j 		returnstate       
+                          
+.globl drop                       
+drop:
+    addi    $sp, $sp, -4
+    sw      $ra, 0($sp)
+    jal 	savestate
+	li 		$t0, 0
+    beq     $a0, $zero, drop_exit
+    li 		$t0, 1
+    j 		drop_loop
+drop_increment:
+	addi 	$t0, $t0, 1
+	la 		$a0,($t1)
+drop_loop:
+   	#CALL "DECONSCTOR" (zero the data)
+    lw      $t1,nodeNextAddr($a0)
+    #######################################################
+    #Should free memory but this causes the driver to fail...
+    #######################################################
+    #sw    $0  nodeData($a0)                   
+    #sw    $0  nodeNextAddr($a0)
+    ########
+    beq 	$t0, $a1, drop_exit
+    bnez    $t1, drop_increment
+drop_exit:
+    move 	$v0, $t1
+    j 		returnstate
 
-    sw      $a1,0($t5)              # store $a1 into address allocated
-    beq     $t2,$zero,front         # node is at front of the list, so there is no need to update pointer
-    sw      $t2,4($t5)              # store pointer to current node into new node
-    addi    $t0,$a0,-8              # subtract from the current node back one
-    sw      $t5,0($t0)              # store new pointer into the node
-    jr      $ra
-
-front:
-    sw      $t5,0($s0)              # make global reference to front of the node the new node if its at the front
-
-close:
-    jr      $ra
-                          ##
-
-
-  ## Gives the length of a linked list.
-  #
-  # @param $a0 The list.
-  #
-  # @return The length of the list.
-  #
-  ######################################
-.globl length                        #
+.globl length
 length:
-	#SAVE RETURN ADRRES AND CURRENT ARRAY ON THE STACK                              #
-   	addi    $sp,$sp,-8
-    sw      $ra,0($sp)
-    sw      $a0,4($sp)
-    #INITIALIZE COUNTER
-	li $t2,0
-    beq     $s0,$zero,length_done
-
+    addi    $sp, $sp, -4
+    sw      $ra, 0($sp)
+    jal 	savestate
+	li 		$t0, 0
+    beq     $a0, $zero, length_exit
+    li		$t0, 1
+    j 		length_loop
+length_increment:
+	addi 	$t0, $t0, 1
+	la 		$a0, ($t1)
 length_loop:
-	#TRY TO LOAD FIRST ELEMENTS DATA FROM LIST
-    li  $t0,0($a0)
-    #IF THERE IS NOTHING RETURN
-    beqz $t0, length_done
-    #TRY TO LOAD POINTER TO NEXT ELE IN LIST
-   	la  $t1,4($a0)
-   	#IF THERE IS NO POINTER TO THE NEXT ELEMENT
-   	beqz $t1, length_done
-   	#OTHERWISE ADD 8 TO POINTER OF LIST (4 byte for int element, 4 for next pointer)
-   	addi $a0,$a0,8
-    j length_loop
-length_done:
-	#LOAD RA AND LIST BACK FROM STACK
-    lw      $a0,4($sp)
-    lw      $ra,0($sp)
-    addi    $sp,$sp,8
-    or   $v0, $0, $t2
-    jr      $ra
-
-
-  ## Drops the first x elements from the list
-  #
-  # @param $a0 The list.
-  # @param $a1 The number of elements to drop.
-  #
-  ######################################
-  drop:  
-  beqz	$s7, start	#if list is empty, go to menu
-	
-	lw	$t2, -4($a3)	#load address of previous node
-	beqz	$t2, delHead	#if no previous node, this is a head node
-	
-	lw	$t3, 12($a3)	#load address of next node
-	beqz	$t3, delTail	#if no previous node, this is a tail node
-	
-	lw	$t3, 12($a3)	#load address of next node
-	sw	$t2, -4($t3)	#store address of previous node in next node's previous field
-	
-	lw	$t2, 12($a3)	# load address of next node
-	lw	$t3, -4($a3)	# load address of previous node 
-	sw	$t2, 12($t3)	#store address of next node in previous node's next field
-	
-	la	$a3, ($t2)	#the new curr is the next node
-	
-doneDel:			
-	jr	$ra
-
-delHead:
-	lw	$t2, 12($a3)
-	sw	$zero, -4($t2)
-	la	$s7, ($t2)
-	la	$a3, ($t2)
-	j	doneDel
-	
-delTail:
-	lw	$t2, -4($a3)
-	sw	$zero, 12($t2)
-	la	$a3, ($t2)
-	j	doneDel
-  jr $ra                              ##
-
-
-  ## Inserts an element into a given list at a given index (other
-  # than the head).
-  #
-  #   This function cannot replace the head of the list, i.e. it
-  # does not consider 0 a valid index.
-  #
-  # @param ($a0 : Node) The list to insert into.
-  # @param ($a1 : Node) The node to insert.
-  # @param ($a2 : num+) The index at which to insert.
-  #
-  ######################################
-  .globl insert                        #
-  insert:   
-  	beqz $a2, invalid_index
-  	bltz $a2, invalid_index
-  	
-                                       #
-  jr $ra                              ##
-	
-
-  ## Reverses a list (destructively!)
-  #
-  # @param $a0 The list.
-  #
-  # @return the pointer to the first (formerly last) element.
-  #
-  ######################################
-  reverse: 
-
-  jr $ra                              ##
-#INCREMENTS LINKED LIST BY 8 BYTES (One node)
-nextNode:
-	la	$t8, 8($a0)
-	lw	$a0, ($t8)
-	j	start
-	
-#DECREMENTS LINKED LIST BY 8 BYTES (One node)
-prevNode:
-	la	$t8, -8($a0)
-	lw	$a0, ($t8)
-	jr	$ra
-
+   	lw      $t3, 0($a0)
+    lw      $t1, nodeNextAddr($a0)     
+    bnez    $t1, length_increment
+length_exit:
+    move 	$v0, $t0
+    j 		returnstate
   #------------------ DON'T MODIFY BELOW ---------------------------
 
   ## Entry point.
   #
   ######################################
-  .globl main                          #
+                        #
   main:                                #
                                        #
     # Create 10 nodes in reverse       #
@@ -289,8 +203,8 @@ prevNode:
     jal  print_list                    # .
     ori  $t9  $0 10                    # .
     jal  chr                           # .
-                                       #
-    or   $a0  $0 $s0                   # Print the original list (before drop)
+                                       
+   or   $a0  $0 $s0                   # Print the original list (before drop)
     jal print_list                     # .
     ori  $t9  $0 10                    # .
     jal  chr                           # .
@@ -310,8 +224,7 @@ prevNode:
   #
   # @param ($a0 : Node) The list to print.
   #
-  ######################################
-  .globl print_list                    #
+  ######################################                   #
   print_list:                          #
     addi $sp $sp  -4                   # print_list(list):
     sw   $ra  0($sp)                   #
@@ -429,3 +342,29 @@ prevNode:
     lw   $a0  0($sp)                   #
     addi $sp $sp  4                    #
   jr $ra                              ##
+.globl savestate
+savestate:
+	#Saves arguments to stack for later use/nested calls
+	#sp expected to be decremented by 4 per necessity to save return adress from caller function
+	#ra expected to be saved by user before calling. (cant save it here!)
+	addi $sp $sp -4
+    sw $a0 0($sp)
+    addi $sp $sp -4
+    sw $a1 0($sp)
+    addi $sp $sp -4
+    sw $a2 0($sp)
+    jr $ra
+################################################################################
+.globl returnstate
+returnstate:
+	
+	#loads arguments from stack after nested fn call
+	lw $a2 0($sp)
+    addi $sp $sp 4
+    lw $a1 0($sp)
+    addi $sp $sp 4
+    lw $a0 0($sp)
+    addi $sp $sp 4
+    lw $ra 0($sp)
+    addi $sp $sp 4
+    jr $ra
